@@ -1,0 +1,273 @@
+Microsoft (R) Macro Assembler Version 11.00.50727.1	    02/11/15 15:42:32
+fio.asm							     Page 1 - 1
+
+
+				; floating point to ASCII code
+				; author: R. Detmer
+				; revised: 7/2008
+				.586
+				.MODEL FLAT
+				.STACK  4096
+
+				; procedure ftoaproc(source, result)
+				; convert floating point number to ASCII string 
+				; Parameters passed on the stack:
+				;   (1) 32-bit floating point value
+				;   (2) address of ASCII destination string
+				; ASCII string with format [blank/-]d.dddddE[+/-]dd is generated.
+				; (The string is always 12 characters long.)
+
+ 00000000			.DATA
+ 00000000 41200000		ten       REAL4  10.0
+ 00000004 3F800000		one       REAL4  1.0
+ 00000008 36A7C5AC		round     REAL4  0.000005
+ 0000000C 00000000		digit     DWORD  ?
+ 00000010 00000000		exponent  DWORD  ?
+ 00000014 0A			byteTen   BYTE   10
+
+ 00000000			.CODE
+ 00000000			ftoaproc  PROC
+ 00000000  55			          push ebp              ; establish stack frame
+ 00000001  8B EC		          mov  ebp, esp
+ 00000003  50			          push eax              ; save registers
+ 00000004  53			          push ebx
+ 00000005  51			          push ecx
+ 00000006  57			          push edi
+
+ 00000007  9B DB E3		          finit                 ; initialize FPU
+ 0000000A  8B 7D 0C		          mov  edi, [ebp+12]    ; destination string address
+ 0000000D  D9 45 08		          fld  REAL4 PTR [ebp+8]  ; value to ST 
+ 00000010  D9 E4		          ftst                  ; value >= 0?
+ 00000012  9B DF E0		          fstsw  ax             ; status word to AX
+ 00000015  9E			          sahf                  ; condition code bits to flags
+ 00000016  72 05		          jnae elseNeg          ; skip if negative
+ 00000018  C6 07 20		          mov  BYTE PTR [edi], ' '  ; blank for positive
+ 0000001B  EB 05		          jmp  endifNeg         ; exit if
+ 0000001D  C6 07 2D		elseNeg:  mov  BYTE PTR [edi], '-'  ; minus for negative
+ 00000020  D9 E0		          fchs                  ; make number positive
+ 00000022			endifNeg:
+ 00000022  47			          inc  edi              ; point at next destination byte
+
+ 00000023  C7 05 00000010 R	          mov  exponent, 0      ; exponent := 0
+	   00000000
+ 0000002D  D9 E4		          ftst                  ; value = 0?
+ 0000002F  9B DF E0		          fstsw ax              ; status word to AX
+ 00000032  9E			          sahf                  ; condition code bits to flags
+ 00000033  74 40		          jz   endifZero        ; skip if zero
+ 00000035  D8 15 00000000 R	          fcom ten              ; value > 10?
+ 0000003B  9B DF E0		          fstsw ax              ; status word to AX
+ 0000003E  9E			          sahf                  ; condition code bits to flags
+ 0000003F  72 1A		          jnae elseLess         ; skip if value not >= 10
+ 00000041			untilLess:
+ 00000041  D8 35 00000000 R	          fdiv ten              ; value := value/10
+ 00000047  FF 05 00000010 R	          inc  exponent         ; add 1 to exponent
+ 0000004D  D8 15 00000000 R	          fcom ten              ; value < 10?
+ 00000053  9B DF E0		          fstsw ax              ; status word to AX
+ 00000056  9E			          sahf                  ; condition code bits to flags
+ 00000057  73 E8		          jnb  untilLess        ; continue until value < 10
+ 00000059  EB 1A		          jmp  endifBigger      ; exit if
+ 0000005B			elseLess:
+ 0000005B			whileLess:
+ 0000005B  D8 15 00000004 R	          fcom one              ; value < 1?
+ 00000061  9B DF E0		          fstsw ax              ; status word to AX
+ 00000064  9E			          sahf                  ; condition code bits to flags
+ 00000065  73 0E		          jnb  endwhileLess     ; exit if not less
+ 00000067  D8 0D 00000000 R	          fmul ten              ; value := 10*value
+ 0000006D  FF 0D 00000010 R	          dec  exponent         ; subtract 1 from exponent
+ 00000073  EB E6		          jmp  whileLess        ; continue while value < 1
+ 00000075			endwhileLess:
+ 00000075			endifBigger:
+ 00000075			endifZero:
+
+ 00000075  D8 05 00000008 R	          fadd round            ; add rounding value
+ 0000007B  D8 15 00000000 R	          fcom ten              ; value > 10?
+ 00000081  9B DF E0		          fstsw ax              ; status word to AX
+ 00000084  9E			          sahf                  ; condition code bits to flags
+ 00000085  72 0C		          jnae endifOver        ; skip if not
+ 00000087  D8 35 00000000 R	          fdiv ten              ; value := value/10
+ 0000008D  FF 05 00000010 R	          inc  exponent         ; add 1 to exponent
+ 00000093			endifOver:
+
+				; at this point 1.0 <= value < 10.0 (or value = 0.0)
+ 00000093  D9 C0		          fld  st               ; copy value
+ 00000095  DB 0D 0000000C R	          fisttp digit           ; store integer part
+ 0000009B  8B 1D 0000000C R	          mov  ebx, digit       ; copy integer to EBX
+ 000000A1  83 CB 30		          or   ebx, 30h         ; convert digit to character
+ 000000A4  88 1F		          mov  BYTE PTR [edi], bl  ; store character in destination
+ 000000A6  47			          inc  edi              ; point at next destination byte
+ 000000A7  C6 07 2E		          mov  BYTE PTR [edi], '.'     ; decimal point
+ 000000AA  47			          inc  edi              ; point at next destination byte
+				          
+ 000000AB  B9 00000005		          mov  ecx, 5           ; count of remaining digits
+ 000000B0  DA 25 0000000C R	forDigit: fisub digit           ; subtract integer part
+ 000000B6  D8 0D 00000000 R	          fmul ten              ; multiply by 10
+ 000000BC  D9 C0		          fld  st               ; copy value
+ 000000BE  DB 0D 0000000C R	          fisttp digit          ; store integer part
+ 000000C4  8B 1D 0000000C R	          mov  ebx, digit       ; copy integer to EBX
+ 000000CA  83 CB 30		          or   ebx, 30h         ; convert digit to character
+ 000000CD  88 1F		          mov  BYTE PTR [edi], bl  ; store character in destination
+ 000000CF  47			          inc  edi              ; point at next destination byte
+ 000000D0  E2 DE		          loop forDigit         ; repeat 5 times
+
+ 000000D2  C6 07 45		          mov  BYTE PTR [edi], 'E'  ; exponent indicator
+ 000000D5  47			          inc  edi              ; point at next destination byte
+ 000000D6  A1 00000010 R	          mov  eax, exponent    ; get exponent
+ 000000DB  83 F8 00		          cmp  eax, 0           ; exponent >= 0 ?
+ 000000DE  7C 05		          jnge NegExp
+ 000000E0  C6 07 2B		          mov  BYTE PTR [edi], '+'  ; non-negative exponent
+ 000000E3  EB 05		          jmp  endifNegExp
+ 000000E5  C6 07 2D		NegExp:   mov  BYTE PTR [edi], '-'  ; negative exponent
+ 000000E8  F7 D8		          neg  eax              ; change exponent to positive
+ 000000EA			endifNegExp:
+ 000000EA  47			          inc  edi              ; point at next destination byte
+
+ 000000EB  F6 35 00000014 R	          div  byteTen          ; convert exponent to 2 digits
+ 000000F1  0D 00003030		          or   eax, 3030h       ; convert both digits to ASCII
+ 000000F6  88 07		          mov  BYTE PTR [edi], al  ; store characters in destination
+ 000000F8  88 67 01		          mov  BYTE PTR [edi+1], ah
+
+ 000000FB  5F			          pop  edi              ; restore registers
+ 000000FC  59			          pop  ecx
+ 000000FD  5B			          pop  ebx
+ 000000FE  58			          pop  eax
+ 000000FF  5D			          pop  ebp
+ 00000100  C3			          ret                   ; return
+ 00000101			ftoaproc  ENDP
+
+ 00000101			atofproc  PROC
+				; convert ASCII string to floating point number
+				; Parameter passed on the stack: address of ASCII source string
+				; After an optional leading minus sign, only digits 0-9 and a decimal
+				; point are accepted -- the scan terminates with any other character.
+				; The floating point value is returned in ST.
+				; Local variables are stored on the stack:
+				;   ten    [EBP-4]  -- always 10 after initial code
+				;   point  [EBP-8]  -- Boolean, -1 for true, 0 for false
+				;   minus  [EBP-12] -- Boolean, -1 for true, 0 for false
+				;   digit  [EBP-16] -- next digit as an integer
+
+ 00000101  55			          push ebp                      ; establish stack frame
+ 00000102  8B EC		          mov  ebp, esp
+ 00000104  83 EC 10		          sub  esp, 16                  ; stack space for local variables
+ 00000107  50			          push eax                      ; save registers
+ 00000108  56			          push esi
+
+ 00000109  C7 45 FC		          mov  DWORD PTR [ebp-4], 10    ; ten := 10
+	   0000000A
+ 00000110  D9 E8		          fld1                          ; divisor := 1.0
+ 00000112  D9 EE		          fldz                          ; value := 0.0
+ 00000114  C7 45 F8		          mov  DWORD PTR [ebp-8], 0     ; point := false
+	   00000000
+ 0000011B  C7 45 F4		          mov  DWORD PTR [ebp-12], 0    ; minus := false
+	   00000000
+ 00000122  8B 75 08		          mov  esi, [ebp+8]             ; address of first source character
+ 00000125  80 3E 2D		          cmp  BYTE PTR [esi], '-'      ; leading minus sign?
+ 00000128  75 08		          jne  endifMinus               ; skip if not
+ 0000012A  C7 45 F4		          mov  DWORD PTR [ebp-12], -1   ; minus := true
+	   FFFFFFFF
+ 00000131  46			          inc  esi                      ; point at next source character
+ 00000132			endifMinus:
+				          
+ 00000132  8A 06		whileOK:  mov  al, [esi]                ; get next character
+ 00000134  3C 2E		          cmp  al, '.'                  ; decimal point?
+ 00000136  75 09		          jne  endifPoint               ; skip if not
+ 00000138  C7 45 F8		          mov  DWORD PTR [ebp-8], -1    ; point := true
+	   FFFFFFFF
+ 0000013F  EB 21		          jmp  nextChar
+ 00000141			endifPoint:
+ 00000141  3C 30		          cmp  al, '0'                  ; character >= '0'
+ 00000143  7C 20		          jnge endwhileOK               ; exit if not
+ 00000145  3C 39		          cmp  al, '9'                  ; character <= '9'
+ 00000147  7F 1C		          jnle endwhileOK               ; exit if not
+ 00000149  83 E0 0F		          and  eax, 0000000fh           ; convert ASCII to integer value
+ 0000014C  89 45 F0		          mov  DWORD PTR [ebp-16], eax  ; put integer in memory
+ 0000014F  DA 4D FC		          fimul DWORD PTR [ebp-4]       ; value := value * 10
+ 00000152  DA 45 F0		          fiadd DWORD PTR [ebp-16]      ; value := value + digit
+ 00000155  83 7D F8 FF		          cmp  DWORD PTR [ebp-8], -1    ; already found a decimal point?
+ 00000159  75 07		          jne  endifDec                 ; skip if not
+ 0000015B  D9 C9		          fxch                          ; put divisor in ST and value in ST(1)
+ 0000015D  DA 4D FC		          fimul DWORD PTR [ebp-4]       ; divisor := divisor * 10
+ 00000160  D9 C9		          fxch                          ; value to ST; divisor back to ST(1)
+ 00000162			endifDec:
+ 00000162  46			nextChar: inc  esi                      ; point at next source character
+ 00000163  EB CD		          jmp  whileOK
+ 00000165			endwhileOK:
+
+ 00000165  DE F1		          fdivr                         ; value := value / divisor
+ 00000167  83 7D F4 FF		          cmp  DWORD PTR [ebp-12], -1   ; was there a minus sign?
+ 0000016B  75 02		          jne  endifNeg
+ 0000016D  D9 E0		          fchs                          ; value := -value
+ 0000016F			endifNeg:
+ 0000016F  5E			          pop  esi                      ; restore registers
+ 00000170  58			          pop  eax
+ 00000171  8B E5		          mov  esp, ebp
+ 00000173  5D			          pop  ebp
+ 00000174  C3			          ret                           ; return
+ 00000175			atofproc  ENDP
+
+				          END
+Microsoft (R) Macro Assembler Version 11.00.50727.1	    02/11/15 15:42:32
+fio.asm							     Symbols 2 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00001000 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 00000015 Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 00000175 Para	  Public  'CODE'	
+
+
+Procedures, parameters, and locals:
+
+                N a m e                 Type     Value    Attr
+
+atofproc . . . . . . . . . . . .	P Near	 00000101 _TEXT	Length= 00000074 Public
+  endifMinus . . . . . . . . . .	L Near	 00000132 _TEXT	
+  whileOK  . . . . . . . . . . .	L Near	 00000132 _TEXT	
+  endifPoint . . . . . . . . . .	L Near	 00000141 _TEXT	
+  endifDec . . . . . . . . . . .	L Near	 00000162 _TEXT	
+  nextChar . . . . . . . . . . .	L Near	 00000162 _TEXT	
+  endwhileOK . . . . . . . . . .	L Near	 00000165 _TEXT	
+  endifNeg . . . . . . . . . . .	L Near	 0000016F _TEXT	
+ftoaproc . . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 00000101 Public
+  elseNeg  . . . . . . . . . . .	L Near	 0000001D _TEXT	
+  endifNeg . . . . . . . . . . .	L Near	 00000022 _TEXT	
+  untilLess  . . . . . . . . . .	L Near	 00000041 _TEXT	
+  elseLess . . . . . . . . . . .	L Near	 0000005B _TEXT	
+  whileLess  . . . . . . . . . .	L Near	 0000005B _TEXT	
+  endwhileLess . . . . . . . . .	L Near	 00000075 _TEXT	
+  endifBigger  . . . . . . . . .	L Near	 00000075 _TEXT	
+  endifZero  . . . . . . . . . .	L Near	 00000075 _TEXT	
+  endifOver  . . . . . . . . . .	L Near	 00000093 _TEXT	
+  forDigit . . . . . . . . . . .	L Near	 000000B0 _TEXT	
+  NegExp . . . . . . . . . . . .	L Near	 000000E5 _TEXT	
+  endifNegExp  . . . . . . . . .	L Near	 000000EA _TEXT	
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000000h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+byteTen  . . . . . . . . . . . .	Byte	 00000014 _DATA	
+digit  . . . . . . . . . . . . .	DWord	 0000000C _DATA	
+exponent . . . . . . . . . . . .	DWord	 00000010 _DATA	
+one  . . . . . . . . . . . . . .	DWord	 00000004 _DATA	
+round  . . . . . . . . . . . . .	DWord	 00000008 _DATA	
+ten  . . . . . . . . . . . . . .	DWord	 00000000 _DATA	
+
+	   0 Warnings
+	   0 Errors
