@@ -1,10 +1,11 @@
-Microsoft (R) Macro Assembler Version 11.00.50727.1	    05/05/16 16:47:45
+Microsoft (R) Macro Assembler Version 11.00.61030.0	    12/08/16 18:59:32
 main.asm						     Page 1 - 1
 
 
-				; Author:
-				; Date:
-				; This is the Visual Studio 2012 version
+				; General comments
+				; Author:  
+				; Date: 
+				; This is the Visual Studio 2012/Visual C++ Express Edition 2012 version   
 
 				; Preprocessor directives
 				.586		; use the 80586 set of instructions
@@ -16,7 +17,7 @@ main.asm						     Page 1 - 1
 			      C .NOLIST      ; turn off listing
 			      C .LIST        ; begin listing
 			      C 
-				INCLUDE fio.h  ; header file for floating point conversions to and from ASCII
+				INCLUDE fio.h  ; header file for floating point input/output
 			      C ; FIO.H -- header file for I/O macros (listing suppressed)
 			      C .NOLIST      ; turn off listing
 			      C .LIST        ; begin listing
@@ -26,34 +27,217 @@ main.asm						     Page 1 - 1
 				.STACK 4096	   ; allocate 4096 bytes for the stack
 
 				; Named memory allocation and initialization
-				; Use REAL4 for floating point values
  00000000			.DATA
- 00000000 405CCCCD		number				REAL4	3.45
- 00000004  0000000C [		numberStr			BYTE	12 DUP (?)
-	    00
+					
+					; the X's are spaces which will be filled in by the ftoa macro.
+
+ 00000000 52 61 64 69 75		inputPrompt  BYTE "Radius: ", 0
+	   73 3A 20 00
+
+ 00000009 54 68 65 20 72		outputLabel  BYTE "The radius is "
+	   61 64 69 75 73
+	   20 69 73 20
+ 00000017 58 58 58 58 58		outputRadius BYTE "XXXXXXXXXXXX", 0
+	   58 58 58 58 58
+	   58 58 00
+
+ 00000024 54 68 65 20 63		outputText			BYTE "The circumference is "
+	   69 72 63 75 6D
+	   66 65 72 65 6E
+	   63 65 20 69 73
+	   20
+ 00000039 58 58 58 58 58		outputCircumference BYTE "XXXXXXXXXXXX", 0dh, 0ah
+	   58 58 58 58 58
+	   58 58 0D 0A
+ 00000047  54 68 65 20 61							BYTE "The area is "
+	   72 65 61 20 69
+	   73 20
+ 00000053 58 58 58 58 58		outputArea			BYTE "XXXXXXXXXXXX", 0
+	   58 58 58 58 58
+	   58 58 00
+
+					; more than 20 characters input is unreasonable
+ 00000060  00000014 [			inputRadius	 BYTE 20 DUP ("X")
+	    58
 	   ]
 
- 00000010 2D 30 2E 30 30	anotherNumberStr	BYTE	"-0.004567"
-	   34 35 36 37
- 00000019 00000000		anotherNumber		REAL4	?
+ 00000074 00000000			floatRadius REAL4 0.0
+
+ 00000078 00000000			floatCircumference REAL4 0.0
+
+ 0000007C 00000000			floatArea REAL4 0.0
 
 				; procedure definitions
  00000000			.CODE
  00000000			_MainProc PROC
+					
+					; get radius from user
 
-					; test ftoa
-					ftoa numberStr, number
+					input inputPrompt, inputRadius, 20
 
-					; test atof
-					atof anotherNumber, anotherNumberStr
+					atof floatRadius, inputRadius
 
- 00000033			done:
- 00000033  B8 00000000		        mov     eax, 0  ; exit with return code 0
- 00000038  C3			        ret
- 00000039			_MainProc ENDP
+					; call findCircumference(radius)
+
+ 00000035  9B DB E3			finit					; initialize f.p. registers
+					
+ 00000038  A1 00000074 R		mov eax, floatRadius	; EAX := radius
+
+ 0000003D  50				push eax				; push parameter 1
+					
+ 0000003E  E8 000000A5			call findCircumference	; findCircumference(radius)
+
+ 00000043  5B				pop ebx					; throw away parameter
+
+ 00000044  D9 15 00000078 R		fst floatCircumference	; save the return value to memory
+					
+					; call findArea(radius)
+
+ 0000004A  9B DB E3			finit					; initialize f.p. registers
+
+ 0000004D  50				push eax				; push parameter 1
+
+ 0000004E  E8 0000007A			call findArea			; findArea(radius)
+
+ 00000053  5B				pop ebx					; throw away parameter
+
+ 00000054  D9 15 0000007C R		fst floatArea			; save the return value to memory
+					
+					; convert results to ASCII
+
+					ftoa outputRadius, floatRadius
+					ftoa outputCircumference, floatCircumference
+					ftoa outputArea, floatArea
+
+					; Show the user the results
+
+					output outputLabel, outputText
+
+ 000000C7  B8 00000000			mov     eax, 0  ; exit with return code 0
+					
+ 000000CC  C3				ret
+ 000000CD			_MainProc ENDP
+
+				; findArea(float radius)
+
+ 000000CD			findArea PROC
+					
+					; establish stack frame
+
+ 000000CD  55				push ebp		; save old EBP
+ 000000CE  8B EC			mov ebp, esp	; create reference for accessing radius (EBP + 8)
+ 000000D0  9C				pushfd			; save EFLAGS
+
+					; A = pi * r^2
+					
+ 000000D1  D9 45 08			fld REAL4 PTR [ebp + 8]	; load radius into ST(0)
+
+ 000000D4  DD D1			fst ST(1)				; load radius into ST(1)
+
+					; f.p. stack:
+					; ST(0) : radius
+					; ST(1) : radius
+
+ 000000D6  DE C9			fmul					; ST(0) := radius * radius
+
+					; f.p. stack:
+					; ST(0) : radius^2
+
+ 000000D8  D9 EB			fldpi					; load pi into ST(0)
+
+					; f.p. stack:
+					; ST(0) : pi
+					; ST(1) : radius^2
+
+ 000000DA  DE C9			fmul					; ST(0) := pi * radius^2
+
+					; f.p. stack:
+					; ST(0) : pi * radius^2
+
+					; restore registers
+					
+ 000000DC  9D				popfd			; restore EFLAGS
+ 000000DD  5D				pop ebp
+					
+					; temporarily save ST(0) to the integer stack
+
+ 000000DE  D9 55 FC			fst REAL4 PTR [ebp - 4]
+
+					; wipe out f.p. registers
+
+ 000000E1  9B DB E3			finit
+
+					; restore ST(0) from the integer stack
+
+ 000000E4  D9 45 FC			fld REAL4 PTR [ebp - 4]
+
+ 000000E7  C3				ret
+
+ 000000E8			findArea ENDP
+
+				; findCircumference(float radius)
+
+ 000000E8			findCircumference PROC
+
+					; establish stack frame
+
+ 000000E8  55				push ebp		; save old EBP
+ 000000E9  8B EC			mov ebp, esp	; create reference for accessing radius (EBP + 8)
+ 000000EB  9C				pushfd			; save EFLAGS
+
+					; C = 2 * pi * r
+					
+ 000000EC  D9 45 08			fld REAL4 PTR [ebp + 8]	; load radius into ST(0)
+
+ 000000EF  D9 EB			fldpi					; load pi into ST(0)
+
+					; f.p. stack:
+					; ST(0) : pi
+					; ST(1) : radius
+
+ 000000F1  DE C9			fmul					; ST(0) := pi * radius
+
+ 000000F3  D9 E8			fld1					; load 1.0 into ST(0)
+ 000000F5  D9 E8			fld1					; (twice)
+
+					; f.p. stack:
+					; ST(0) : 1.0
+					; ST(1) : 1.0
+					; ST(2) : pi * radius
+
+ 000000F7  DE C1			fadd					; ST(0) := 1.0 + 1.0
+
+					; f.p. stack:
+					; ST(0) : 2.0
+					; ST(1) : pi * radius
+
+ 000000F9  DE C9			fmul					; ST(0) := 2.0 * pi * radius
+
+					; ST(0) : 2.0 * pi * radius
+
+					; restore registers
+					
+ 000000FB  9D				popfd			; restore EFLAGS
+ 000000FC  5D				pop ebp
+					
+					; temporarily save ST(0) to the integer stack
+
+ 000000FD  D9 55 FC			fst REAL4 PTR [ebp - 4]
+
+					; wipe out f.p. registers
+
+ 00000100  9B DB E3			finit
+
+					; restore ST(0) from the integer stack
+
+ 00000103  D9 45 FC			fld REAL4 PTR [ebp - 4]
+
+ 00000106  C3				ret
+
+ 00000107			findCircumference ENDP
 
 				END   ; end of source code
-Microsoft (R) Macro Assembler Version 11.00.50727.1	    05/05/16 16:47:45
+Microsoft (R) Macro Assembler Version 11.00.61030.0	    12/08/16 18:59:32
 main.asm						     Symbols 2 - 1
 
 
@@ -79,16 +263,17 @@ Segments and Groups:
 
 FLAT . . . . . . . . . . . . . .	GROUP
 STACK  . . . . . . . . . . . . .	32 Bit	 00001000 Para	  Stack	  'STACK'	 
-_DATA  . . . . . . . . . . . . .	32 Bit	 0000001D Para	  Public  'DATA'	
-_TEXT  . . . . . . . . . . . . .	32 Bit	 00000039 Para	  Public  'CODE'	
+_DATA  . . . . . . . . . . . . .	32 Bit	 00000080 Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 00000107 Para	  Public  'CODE'	
 
 
 Procedures, parameters, and locals:
 
                 N a m e                 Type     Value    Attr
 
-_MainProc  . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 00000039 Public
-  done . . . . . . . . . . . . .	L Near	 00000033 _TEXT	
+_MainProc  . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 000000CD Public
+findArea . . . . . . . . . . . .	P Near	 000000CD _TEXT	Length= 0000001B Public
+findCircumference  . . . . . . .	P Near	 000000E8 _TEXT	Length= 0000001F Public
 
 
 Symbols:
@@ -106,15 +291,21 @@ Symbols:
 @stack . . . . . . . . . . . . .	Text   	 FLAT
 _getInput  . . . . . . . . . . .	L Near	 00000000 FLAT	External
 _showOutput  . . . . . . . . . .	L Near	 00000000 FLAT	External
-anotherNumberStr . . . . . . . .	Byte	 00000010 _DATA	
-anotherNumber  . . . . . . . . .	DWord	 00000019 _DATA	
 atodproc . . . . . . . . . . . .	L Near	 00000000 FLAT	External
 atofproc . . . . . . . . . . . .	L Near	 00000000 FLAT	External
 atowproc . . . . . . . . . . . .	L Near	 00000000 FLAT	External
 dtoaproc . . . . . . . . . . . .	L Near	 00000000 FLAT	External
+floatArea  . . . . . . . . . . .	DWord	 0000007C _DATA	
+floatCircumference . . . . . . .	DWord	 00000078 _DATA	
+floatRadius  . . . . . . . . . .	DWord	 00000074 _DATA	
 ftoaproc . . . . . . . . . . . .	L Near	 00000000 FLAT	External
-numberStr  . . . . . . . . . . .	Byte	 00000004 _DATA	
-number . . . . . . . . . . . . .	DWord	 00000000 _DATA	
+inputPrompt  . . . . . . . . . .	Byte	 00000000 _DATA	
+inputRadius  . . . . . . . . . .	Byte	 00000060 _DATA	
+outputArea . . . . . . . . . . .	Byte	 00000053 _DATA	
+outputCircumference  . . . . . .	Byte	 00000039 _DATA	
+outputLabel  . . . . . . . . . .	Byte	 00000009 _DATA	
+outputRadius . . . . . . . . . .	Byte	 00000017 _DATA	
+outputText . . . . . . . . . . .	Byte	 00000024 _DATA	
 wtoaproc . . . . . . . . . . . .	L Near	 00000000 FLAT	External
 
 	   0 Warnings

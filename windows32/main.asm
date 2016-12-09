@@ -22,17 +22,21 @@ INCLUDE fio.h  ; header file for floating point input/output
 	inputPrompt  BYTE "Radius: ", 0
 
 	outputLabel  BYTE "The radius is "
-	outputRadius BYTE "XXXXXXXXXXX", 0
+	outputRadius BYTE "XXXXXXXXXXXX", 0
 
 	outputText			BYTE "The circumference is "
-	outputCircumference BYTE "XXXXXXXXXXX", 0dh, 0ah
+	outputCircumference BYTE "XXXXXXXXXXXX", 0dh, 0ah
 						BYTE "The area is "
-	outputArea			BYTE "XXXXXXXXXXX", 0
+	outputArea			BYTE "XXXXXXXXXXXX", 0
 
 	; more than 20 characters input is unreasonable
 	inputRadius	 BYTE 20 DUP ("X")
 
 	floatRadius REAL4 0.0
+
+	floatCircumference REAL4 0.0
+
+	floatArea REAL4 0.0
 
 ; procedure definitions
 .CODE
@@ -42,7 +46,7 @@ _MainProc PROC
 
 	input inputPrompt, inputRadius, 20
 
-
+	atof floatRadius, inputRadius
 
 	; call findCircumference(radius)
 
@@ -56,7 +60,7 @@ _MainProc PROC
 
 	pop ebx					; throw away parameter
 
-	
+	fst floatCircumference	; save the return value to memory
 	
 	; call findArea(radius)
 
@@ -68,7 +72,17 @@ _MainProc PROC
 
 	pop ebx					; throw away parameter
 
+	fst floatArea			; save the return value to memory
+	
+	; convert results to ASCII
 
+	ftoa outputRadius, floatRadius
+	ftoa outputCircumference, floatCircumference
+	ftoa outputArea, floatArea
+
+	; Show the user the results
+
+	output outputLabel, outputText
 
 	mov     eax, 0  ; exit with return code 0
 	

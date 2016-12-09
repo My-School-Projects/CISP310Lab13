@@ -1,4 +1,4 @@
-Microsoft (R) Macro Assembler Version 11.00.50727.1	    02/11/15 15:42:32
+Microsoft (R) Macro Assembler Version 11.00.61030.0	    12/08/16 18:45:20
 fio.asm							     Page 1 - 1
 
 
@@ -206,7 +206,7 @@ fio.asm							     Page 1 - 1
  00000175			atofproc  ENDP
 
 				          END
-Microsoft (R) Macro Assembler Version 11.00.50727.1	    02/11/15 15:42:32
+Microsoft (R) Macro Assembler Version 11.00.61030.0	    12/08/16 18:45:20
 fio.asm							     Symbols 2 - 1
 
 
